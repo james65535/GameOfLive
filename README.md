@@ -3,7 +3,7 @@
 ## Notes
 - Developed using ISO C++ Standard and WindowsSDK 10 with Default MSVC
 - Limited code tests show program meets functional requirements
-- Performance is lacking (55 seconds for 1,000,000 generations, size: 706.5MB) but did not have time to profile and optimise, also approached in a naive manner which needs refactoring but it allowed me to finish within the time frame.
+- Performance is lacking: (55 seconds for 1,000,000 generations, size: 706.5MB) but did not have time to profile and optimise, also approached in a naive manner which needs refactoring but it allowed me to finish within the time frame given to me by my family.
 
 ## Test Provided Instructions:
 "Implement Conway's Game of Life in 64-bit signed integer space.
@@ -29,14 +29,10 @@ Sample input:
 -2000000000001 -2000000000001
 -2000000000000 -2000000000001
 ```
-Your program should read the state of the simulation from standard input, run 10 iterations
+"Your program should read the state of the simulation from standard input, run 10 iterations
 of the Game of Life, and print the result to standard output in Life 1.06 format.
-Please don’t spend more than 3 hours on your solution. Feel free to allocate that time in a
-manner that works best for your schedule. You may work in any language you prefer.
+
 We're most interested in both the technical aspects of how you deal with very large
 integers and how you go about solving the problem. At the onsite, be prepared to
-discuss your solution, including the choices and tradeoffs you made. Please send your
-solution to your recruiting partner in advance of the interview (We request that you send
-in the code 24-business hours before your interview date). Though not required, you are
-welcome to bring a laptop with you to your interview to walk us through the code"
+discuss your solution, including the choices and tradeoffs you made."
 
