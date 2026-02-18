@@ -313,7 +313,7 @@ int main(int argc, char* argv[])
     */
     
     auto world = new World(glider);
-    size_t world_generations = 100;
+    size_t world_generations = 10;
     while(world_generations > 0)
     {
         --world_generations;
