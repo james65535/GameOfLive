@@ -106,8 +106,8 @@ public:
     
 private:
 
-    // TODO refactor to break down to function calls
-    /** NOTE: sites will have the y axis decrement as it moves upwards */
+    // TODO refactor to break down to function calls to reduce error prone repition
+    /** NOTE: Conway GoL sites will have the y axis decrement as it moves upwards */
     bool WillCellSurvive(std::shared_ptr<Cell> cell)
     {
         uint8_t live_neighbors = 0;
@@ -211,7 +211,7 @@ private:
         return false;
     }
 
-    // TODO dedupe this unholiness with WillCellSurvive
+    // TODO dedupe this unholiness with WillCellSurvive and avoid re-checking surrounding dead cells
     bool ResurrectCell(Coordinates coordinates)
     {
         uint8_t live_neighbors = 0;
@@ -303,7 +303,7 @@ int main(int argc, char* argv[])
         { Coordinates(1,1), std::make_shared<Cell>(Coordinates(1,1)) }
     };
     /*
-     * after 1 generation - check https://copy.sh/life/
+     * Glider after 1 generation - check https://copy.sh/life/
     * #Life 1.06
     * 1 0
     * 0 1
@@ -321,5 +321,4 @@ int main(int argc, char* argv[])
         world->UpdateWorld();
     }
     world->PrintCells();
-    printf(" \n");
 }

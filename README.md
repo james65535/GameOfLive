@@ -1,11 +1,11 @@
-﻿# Game of Life - Riot Test
+﻿# Game of Life - Test
 
 ## Notes
 - Developed using ISO C++ Standard and WindowsSDK 10 with Default MSVC
 - Limited code tests show program meets functional requirements
-- Performance is lacking but did not have time to profile and optimise, also approached in a naive manner which I could finish within the time frame.
+- Performance is lacking (55 seconds for 1,000,000 generations, size: 706.5MB) but did not have time to profile and optimise, also approached in a naive manner which needs refactoring but it allowed me to finish within the time frame.
 
-## Riot Provided Instructions:
+## Test Provided Instructions:
 "Implement Conway's Game of Life in 64-bit signed integer space.
 Imagine a 2D grid - each cell (coordinate) can be either "alive" or "dead". Every generation
 of the simulation, the system ticks forward. Each cell's value changes according to the
