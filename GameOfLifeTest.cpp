@@ -1,306 +1,187 @@
 
 
-#include <cstdint>
+/* Work of James65535.github.io */
 #include <cstdio>
-#include <functional>
-#include <ranges>
 #include <stack>
 #include <string>
+#include <unordered_set>
 
 using x_size_t = int64_t;
 using y_size_t = int64_t;
-using max_board_size_t = int64_t;
-std::string world_print_header = "#Life 1.06";
-
-struct Coordinates
-{
-    x_size_t x;
-    y_size_t y;
-
-    Coordinates() = delete;
-    Coordinates(x_size_t in_x, y_size_t in_y) : x(in_x), y(in_y){}
-};
-
-struct Cell
-{
-    Coordinates coordinates_;
-
-    Cell() = delete;
-    Cell(Coordinates coordinates) : coordinates_(coordinates) {}
-};
 
 enum Cardinal
 {
-    y_up = -1,
-    y_down = 1,
-    x_left = -1,
-    x_right = 1
+    Y_UP = -1,
+    Y_DOWN = 1,
+    X_LEFT = -1,
+    X_RIGHT = 1,
+    ZERO_VAL = 0
 };
 
-struct Hash_Cells
+struct Coordinates
 {
-    size_t operator()(const Coordinates p) const
-    {
-        size_t xHash = std::hash<int64_t>()(p.x);
-        size_t yHash = std::hash<int64_t>()(p.y) << 1;
-        return xHash ^ yHash;
-    }
-};
+    x_size_t x_;
+    y_size_t y_;
 
-namespace std
-{
-    template<> struct equal_to<Coordinates>
+    Coordinates() = delete;
+    Coordinates(x_size_t in_x, y_size_t in_y) : x_(in_x), y_(in_y){}
+
+    Coordinates operator+(const Coordinates& val) const
+    { return {this->x_ + val.x_, this->y_ + val.y_}; }
+
+    Coordinates operator+=(const Coordinates& val)
+    { return {this->x_ += val.x_, this->y_ += val.y_}; }
+
+    bool operator==(const Coordinates& val) const
+    { return this->x_ == val.x_ && this->y_ == val.y_; }
+
+    struct Hash_Coordinates
     {
-        using argument_type = Coordinates;
-        using result_type = bool;
-        constexpr bool operator()(const Coordinates& lhs, const Coordinates& rhs) const
-        { return (lhs.x == rhs.x && lhs.y == rhs.y); }
+        size_t operator()(const Coordinates p) const
+        {
+            size_t xHash = std::hash<int64_t>()(p.x_);
+            size_t yHash = std::hash<int64_t>()(p.y_) << 1;
+            return xHash ^ yHash;
+        }
     };
+
+    /** Allows for bounds checking on coordinates whether they are original or can test if incremented with adjusted flag set to true */
+    bool WithinBounds(const bool adjusted, Cardinal x_Left = ZERO_VAL, Cardinal x_right = ZERO_VAL, Cardinal y_up = ZERO_VAL, Cardinal y_down = ZERO_VAL) const
+    {
+        if (adjusted)
+        {
+            if (x_ + x_Left >= INT64_MIN && x_ + x_right <= INT64_MAX &&
+            y_ + y_up >= INT64_MIN && y_ + y_down <= INT64_MAX)
+            { return true; }
+        }
+        else
+        {
+            if (x_ >= INT64_MIN && x_ <= INT64_MAX &&
+            y_ >= INT64_MIN && y_  <= INT64_MAX)
+            { return true; }
+        }
+        return false;
+    }
+
+    void Update(const Cardinal x, const Cardinal y)
+    { x_ += x; y_ += y; }
 };
 
 class World
 {
-    std::unordered_map<Coordinates, std::shared_ptr<Cell>, Hash_Cells> live_cells_;
-    std::stack<std::shared_ptr<Cell>> cells_to_cull;
-    std::stack<std::shared_ptr<Cell>> cells_to_birth;
+    std::unordered_set<Coordinates, Coordinates::Hash_Coordinates> live_cells_;
+    std::stack<Coordinates> cells_to_cull_;
+    std::stack<Coordinates> cells_to_birth_;
+    std::vector<Coordinates> coordinates_to_process_{8, Coordinates(0,0)};
 
 public:
 
     World() = delete;
 
-    explicit World(std::unordered_map<Coordinates, std::shared_ptr<Cell>, Hash_Cells> initial_live_cells)
-    { live_cells_.merge(initial_live_cells); }
-
-    void PrintCells()
+    explicit World(std::unordered_set<Coordinates, Coordinates::Hash_Coordinates>& initial_live_cells)
     {
-        printf("%s \n", world_print_header.c_str());
-        for (auto it = live_cells_.begin(); it != live_cells_.end(); ++it)
-        { printf("%lld %lld \n", it->second->coordinates_.x, it->second->coordinates_.y); }
+        live_cells_.merge(initial_live_cells);
+        
+        coordinates_to_process_[0].Update(ZERO_VAL, Y_UP); /** check up */
+        coordinates_to_process_[1].Update(ZERO_VAL, Y_DOWN); /** check down */
+        coordinates_to_process_[2].Update(X_LEFT, ZERO_VAL); /** check left */
+        coordinates_to_process_[3].Update(X_RIGHT, ZERO_VAL); /** check right */
+        coordinates_to_process_[4].Update(X_RIGHT, Y_UP); /** check right upper */
+        coordinates_to_process_[5].Update(X_LEFT, Y_UP); /** check left upper */
+        coordinates_to_process_[6].Update(X_RIGHT, Y_DOWN); /** check right down */
+        coordinates_to_process_[7].Update(X_LEFT, Y_DOWN); /** check left down */
     }
 
+    void PrintWorld(const std::string& header)
+    {
+        printf("%s \n", header.c_str());
+        for (auto it = live_cells_.begin(); it != live_cells_.end(); ++it)
+        { printf("%lld %lld \n", it->x_, it->y_); }
+    }
+
+    // TODO avg 29,000ns
     void EvaluateWorld()
     {
-        for (const auto& val : live_cells_ | std::views::values)
+        for (const auto& cell : live_cells_)
         {
-            if (!WillCellSurvive(val))
-            { cells_to_cull.push(val); }
+            if (cell.WithinBounds(false))
+            { CheckNeighborCells(cell); }
         }
     }
 
+    // TODO avg 4,4000ns
     void UpdateWorld()
     {
-        while (!cells_to_cull.empty())
+        while (!cells_to_cull_.empty())
         {
-            std::shared_ptr<Cell> culled_cell = cells_to_cull.top();
-            cells_to_cull.pop();
-            live_cells_.erase(culled_cell->coordinates_);
+            Coordinates culled_cell_coordinates = cells_to_cull_.top();
+            cells_to_cull_.pop();
+            live_cells_.erase(culled_cell_coordinates);
         }
-
-        while (!cells_to_birth.empty())
-        {
-            std::shared_ptr<Cell> cell_reborn = cells_to_birth.top();
-            cells_to_birth.pop();
-            live_cells_.try_emplace(cell_reborn->coordinates_, cell_reborn);
-        }
-    }
-    
-private:
-
-    // TODO refactor to break down to function calls to reduce error prone repition
-    /** NOTE: Conway GoL sites will have the y axis decrement as it moves upwards */
-    bool WillCellSurvive(std::shared_ptr<Cell> cell)
-    {
-        uint8_t live_neighbors = 0;
-    
-        /** up */
-        {
-            y_size_t up_y = cell->coordinates_.y + y_up;
-            if (up_y >= INT64_MIN)
-            {
-                live_cells_.contains(Coordinates(cell->coordinates_.x, up_y)) ?
-                    ++live_neighbors :
-                    ResurrectCell(Coordinates(cell->coordinates_.x, up_y));
-            }
-        }
-
-        /** down */
-        {
-            y_size_t down_y = cell->coordinates_.y + y_down;
-            if (down_y <= INT64_MAX)
-            {
-                live_cells_.contains(Coordinates(cell->coordinates_.x, down_y)) ?
-                    ++live_neighbors :
-                    ResurrectCell(Coordinates(cell->coordinates_.x, down_y));
-            }
-        }
-
-        /** right */
-        {
-            x_size_t right_x = cell->coordinates_.x + x_right;
-            if (right_x <= INT64_MAX)
-            {
-                live_cells_.contains(Coordinates(right_x, cell->coordinates_.y)) ?
-                    ++live_neighbors :
-                    ResurrectCell(Coordinates(right_x, cell->coordinates_.y));
-            }
-            
-        }
-
-        /** left */
-        {
-            x_size_t left_x = cell->coordinates_.x + x_left;
-            if (left_x >= INT64_MIN)
-            {
-                live_cells_.contains(Coordinates(left_x, cell->coordinates_.y)) ?
-                    ++live_neighbors :
-                    ResurrectCell(Coordinates(left_x, cell->coordinates_.y));
-            }
-        }
-
-        /** up right */
-        {
-            x_size_t right_x = cell->coordinates_.x + x_right;
-            y_size_t up_y = cell->coordinates_.y + y_up;
-            if (right_x <= INT64_MAX && up_y >= INT64_MIN)
-            {
-                live_cells_.contains(Coordinates(right_x, up_y)) ?
-                    ++live_neighbors :
-                    ResurrectCell(Coordinates(right_x, up_y));
-            }
-        }
-
-        /** down right */
-        {
-            x_size_t right_x = cell->coordinates_.x + x_right;
-            y_size_t down_y = cell->coordinates_.y + y_down;
-            if (right_x <= INT64_MAX && down_y <= INT64_MAX)
-            {
-                live_cells_.contains(Coordinates(right_x, down_y)) ?
-                    ++live_neighbors :
-                    ResurrectCell(Coordinates(right_x, down_y));
-            }
-        }
-
-        /** up left */
-        {
-            x_size_t left_x = cell->coordinates_.x + x_left;
-            y_size_t up_y = cell->coordinates_.y + y_up;
-            if (left_x >= INT64_MIN && up_y >= INT64_MIN)
-            {
-                live_cells_.contains(Coordinates(left_x, up_y)) ?
-                    ++live_neighbors :
-                    ResurrectCell(Coordinates(left_x, up_y));
-            }
-        }
-
-        /** down left */
-        {
-            x_size_t left_x = cell->coordinates_.x + x_left;
-            y_size_t down_y = cell->coordinates_.y + y_down;
-            if (left_x >= INT64_MIN && down_y <= INT64_MAX)
-            {
-                live_cells_.contains(Coordinates(left_x, down_y)) ?
-                    ++live_neighbors :
-                    ResurrectCell(Coordinates(left_x, down_y));
-            }
-        }
-
-        if (live_neighbors == 2 || live_neighbors == 3)
-        { return true; }
-
-        return false;
-    }
-
-    // TODO dedupe this unholiness with WillCellSurvive and avoid re-checking surrounding dead cells
-    bool ResurrectCell(Coordinates coordinates)
-    {
-        uint8_t live_neighbors = 0;
         
-        /** up */
+        while (!cells_to_birth_.empty())
         {
-            y_size_t up_y = coordinates.y + y_up;
-            if (up_y >= INT64_MIN)
-            { live_neighbors += live_cells_.contains(Coordinates(coordinates.x, up_y)); }
+            Coordinates the_one_reborn_coordinates = cells_to_birth_.top();
+            cells_to_birth_.pop();
+            live_cells_.insert(the_one_reborn_coordinates);
         }
+    }
+    
+protected:
+    
+    void CheckNeighborCells(const Coordinates& source_cell_location)
+    {
+        uint8_t living_neighbor_count = 0;
+        for (const auto& living_coordinate_offset : coordinates_to_process_)
+        {
+            const Coordinates cell(living_coordinate_offset + source_cell_location);
+            if (cell.WithinBounds(true))
+            {
+                if( live_cells_.contains(cell) )
+                { living_neighbor_count++; }
+                else
+                { TryResurrectDeadCell(cell); }
+            }
+        }
+        
+        /** These living cells affect whether source cell lives or dies */
+        if (living_neighbor_count < 2 || living_neighbor_count > 3)
+        { cells_to_cull_.push(source_cell_location); }
+    }
 
-        /** down */
+    void TryResurrectDeadCell(const Coordinates& coordinates)
+    {
+        /** found a dead cell - determine if it can be reborn */
+        uint8_t dead_living_neighbor_count = 0;
+        for (const auto& coordinate_offset : coordinates_to_process_)
         {
-            y_size_t down_y = coordinates.y + y_down;
-            if (down_y <= INT64_MAX)
-            { live_neighbors += live_cells_.contains(Coordinates(coordinates.x, down_y)); }
+            const Coordinates cell(coordinates + coordinate_offset);
+            if (cell.WithinBounds(true) && live_cells_.contains(cell))
+            { dead_living_neighbor_count++; }
         }
-
-        /** left */
-        {
-            x_size_t left_x = coordinates.x + x_left;
-            if (left_x >= INT64_MIN)
-            { live_neighbors += live_cells_.contains(Coordinates(left_x, coordinates.y)); }
-        }
-
-        /** right */
-        {
-            x_size_t right_x = coordinates.x + x_right;
-            if (right_x <= INT64_MAX)
-            { live_neighbors += live_cells_.contains(Coordinates(right_x, coordinates.y)); }
-        }
-
-        /** up right */
-        {
-            x_size_t right_x = coordinates.x + x_right;
-            y_size_t up_y = coordinates.y + y_up;
-            if (right_x <= INT64_MAX && up_y >= INT64_MIN)
-            { live_neighbors += live_cells_.contains(Coordinates(right_x, up_y)); }
-        }
-
-        /** down right */
-        {
-            x_size_t right_x = coordinates.x + x_right;
-            y_size_t down_y = coordinates.y + y_down;
-            if (right_x <= INT64_MAX && down_y <= INT64_MAX)
-            { live_neighbors += live_cells_.contains(Coordinates(right_x, down_y)); }
-        }
-
-        /** up left */
-        {
-            x_size_t left_x = coordinates.x + x_left;
-            y_size_t up_y = coordinates.y + y_up;
-            if (left_x >= INT64_MIN && up_y >= INT64_MIN)
-            { live_neighbors += live_cells_.contains(Coordinates(left_x, up_y)); }
-        }
-
-        /** down left */
-        {
-            x_size_t left_x = coordinates.x + x_left;
-            y_size_t down_y = coordinates.y + y_down;
-            if (left_x >= INT64_MIN && down_y <= INT64_MAX)
-            { live_neighbors += live_cells_.contains(Coordinates(left_x, down_y)); }
-        }
-
-        if (live_neighbors == 3)
-        {
-            auto cell_reborn = std::make_shared<Cell>(coordinates);
-            cells_to_birth.push(cell_reborn);
-            return true;
-        }
-        return false;
+        /** These neighboring dead cell will live again and avoid a liberal arts degree */
+        if (dead_living_neighbor_count == 3)
+        { cells_to_birth_.push(coordinates); }
     }
 };
 
 int main(int argc, char* argv[])
 {
-    
-    // std::unordered_map<Coordinates, std::shared_ptr<Cell>, Hash_Cells> max_bounds_test = {
+    /** Test Values for INT64 min and max values */
+    //  std::unordered_set<Coordinates, Coordinates::Hash_Coordinates> max_bounds_test = {
     //     { Coordinates(INT64_MIN,INT64_MIN), std::make_shared<Cell>(Coordinates(INT64_MIN,INT64_MIN)) },
     //     { Coordinates(INT64_MIN,INT64_MIN+1), std::make_shared<Cell>(Coordinates(INT64_MIN,INT64_MIN+1)) },
     //     { Coordinates(INT64_MIN+1,INT64_MIN), std::make_shared<Cell>(Coordinates(INT64_MIN+1,INT64_MIN)) }
     // };
-
-    std::unordered_map<Coordinates, std::shared_ptr<Cell>, Hash_Cells> glider = {
-        { Coordinates(0,-1), std::make_shared<Cell>(Coordinates(0,-1)) },
-        { Coordinates(1,0), std::make_shared<Cell>(Coordinates(1,0)) },
-        { Coordinates(-1,1), std::make_shared<Cell>(Coordinates(-1,1)) },
-        { Coordinates(0,1), std::make_shared<Cell>(Coordinates(0,1)) },
-        { Coordinates(1,1), std::make_shared<Cell>(Coordinates(1,1)) }
+   
+    
+    /** Test values to verify standard life automata behaves correctly generation to generation */
+    std::unordered_set<Coordinates, Coordinates::Hash_Coordinates> glider = {
+        { Coordinates(0,-1) },
+        { Coordinates(1,0) },
+        { Coordinates(-1,1) },
+        { Coordinates(0,1) },
+        { Coordinates(1,1) }
     };
     /*
      * Glider after 1 generation - check https://copy.sh/life/
@@ -311,14 +192,16 @@ int main(int argc, char* argv[])
     * 0 2
     * -1 0
     */
-    
+
+    /** game loop */
     auto world = new World(glider);
-    size_t world_generations = 10;
+    size_t world_generations = 1;
+    const std::string print_header = "#Life 1.06";
     while(world_generations > 0)
     {
         --world_generations;
         world->EvaluateWorld();
         world->UpdateWorld();
     }
-    world->PrintCells();
+    world->PrintWorld(print_header);
 }
