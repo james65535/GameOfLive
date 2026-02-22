@@ -2,6 +2,7 @@
 
 /* Work of James65535.github.io */
 #include <cstdio>
+#include <memory>
 #include <stack>
 #include <string>
 #include <unordered_set>
@@ -18,6 +19,7 @@ enum Cardinal
     ZERO_VAL = 0
 };
 
+/** size is 16bytes */
 struct Coordinates
 {
     x_size_t x_;
@@ -39,8 +41,8 @@ struct Coordinates
     {
         size_t operator()(const Coordinates p) const
         {
-            size_t xHash = std::hash<int64_t>()(p.x_);
-            size_t yHash = std::hash<int64_t>()(p.y_) << 1;
+            const size_t xHash = std::hash<int64_t>()(p.x_);
+            const size_t yHash = std::hash<int64_t>()(p.y_) << 1;
             return xHash ^ yHash;
         }
     };
@@ -69,7 +71,7 @@ struct Coordinates
 
 class World
 {
-    std::unordered_set<Coordinates, Coordinates::Hash_Coordinates> live_cells_;
+    std::unordered_set<Coordinates, Coordinates::Hash_Coordinates> living_cell_coordinates_;
     std::stack<Coordinates> cells_to_cull_;
     std::stack<Coordinates> cells_to_birth_;
     std::vector<Coordinates> coordinates_to_process_{8, Coordinates(0,0)};
@@ -80,7 +82,7 @@ public:
 
     explicit World(std::unordered_set<Coordinates, Coordinates::Hash_Coordinates>& initial_live_cells)
     {
-        live_cells_.merge(initial_live_cells);
+        living_cell_coordinates_.merge(initial_live_cells);
         
         coordinates_to_process_[0].Update(ZERO_VAL, Y_UP); /** check up */
         coordinates_to_process_[1].Update(ZERO_VAL, Y_DOWN); /** check down */
@@ -92,71 +94,69 @@ public:
         coordinates_to_process_[7].Update(X_LEFT, Y_DOWN); /** check left down */
     }
 
-    void PrintWorld(const std::string& header)
+    void PrintWorld(const std::string& header) const
     {
         printf("%s \n", header.c_str());
-        for (auto it = live_cells_.begin(); it != live_cells_.end(); ++it)
-        { printf("%lld %lld \n", it->x_, it->y_); }
+        for (const auto& cell : living_cell_coordinates_)
+        { printf("%lld %lld \n", cell.x_, cell.y_); }
     }
-
-    // TODO avg 29,000ns
+    
     void EvaluateWorld()
     {
-        for (const auto& cell : live_cells_)
+        for (auto cell : living_cell_coordinates_)
         {
             if (cell.WithinBounds(false))
             { CheckNeighborCells(cell); }
         }
     }
-
-    // TODO avg 4,4000ns
+    
     void UpdateWorld()
     {
         while (!cells_to_cull_.empty())
         {
             Coordinates culled_cell_coordinates = cells_to_cull_.top();
             cells_to_cull_.pop();
-            live_cells_.erase(culled_cell_coordinates);
+            living_cell_coordinates_.erase(culled_cell_coordinates);
         }
         
         while (!cells_to_birth_.empty())
         {
             Coordinates the_one_reborn_coordinates = cells_to_birth_.top();
             cells_to_birth_.pop();
-            live_cells_.insert(the_one_reborn_coordinates);
+            living_cell_coordinates_.insert(the_one_reborn_coordinates);
         }
     }
     
 protected:
     
-    void CheckNeighborCells(const Coordinates& source_cell_location)
+    void CheckNeighborCells(Coordinates& source_cell_location)
     {
         uint8_t living_neighbor_count = 0;
-        for (const auto& living_coordinate_offset : coordinates_to_process_)
+        for (const auto& cell_coordinate_offset : coordinates_to_process_)
         {
-            const Coordinates cell(living_coordinate_offset + source_cell_location);
-            if (cell.WithinBounds(true))
+            const Coordinates cell_coordinates(cell_coordinate_offset + source_cell_location);
+            if (cell_coordinates.WithinBounds(true))
             {
-                if( live_cells_.contains(cell) )
+                if(living_cell_coordinates_.contains(cell_coordinates))
                 { living_neighbor_count++; }
                 else
-                { TryResurrectDeadCell(cell); }
+                { CountResurrectedDeadCells(cell_coordinates); }
             }
         }
         
         /** These living cells affect whether source cell lives or dies */
         if (living_neighbor_count < 2 || living_neighbor_count > 3)
-        { cells_to_cull_.push(source_cell_location); }
+        { cells_to_cull_.emplace(source_cell_location); }
     }
 
-    void TryResurrectDeadCell(const Coordinates& coordinates)
+    void CountResurrectedDeadCells(const Coordinates& coordinates)
     {
         /** found a dead cell - determine if it can be reborn */
         uint8_t dead_living_neighbor_count = 0;
         for (const auto& coordinate_offset : coordinates_to_process_)
         {
             const Coordinates cell(coordinates + coordinate_offset);
-            if (cell.WithinBounds(true) && live_cells_.contains(cell))
+            if (cell.WithinBounds(true) && living_cell_coordinates_.contains(cell))
             { dead_living_neighbor_count++; }
         }
         /** These neighboring dead cell will live again and avoid a liberal arts degree */
@@ -173,7 +173,6 @@ int main(int argc, char* argv[])
     //     { Coordinates(INT64_MIN,INT64_MIN+1), std::make_shared<Cell>(Coordinates(INT64_MIN,INT64_MIN+1)) },
     //     { Coordinates(INT64_MIN+1,INT64_MIN), std::make_shared<Cell>(Coordinates(INT64_MIN+1,INT64_MIN)) }
     // };
-   
     
     /** Test values to verify standard life automata behaves correctly generation to generation */
     std::unordered_set<Coordinates, Coordinates::Hash_Coordinates> glider = {
@@ -192,7 +191,7 @@ int main(int argc, char* argv[])
     * 0 2
     * -1 0
     */
-
+    
     /** game loop */
     auto world = new World(glider);
     size_t world_generations = 1;
@@ -204,4 +203,5 @@ int main(int argc, char* argv[])
         world->UpdateWorld();
     }
     world->PrintWorld(print_header);
+    delete world; /** RAII would take care of this */
 }
